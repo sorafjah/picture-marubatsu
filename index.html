@@ -101,7 +101,6 @@
             object-fit: cover;
             border-radius: 24px;
             border: 6px solid #ff9800;
-            transform: scaleX(-1); /* 初期値（インカメラ）は鏡にする */
         }
 
         /* 取り込まれた画像 (アスペクト比を維持して最大表示) */
@@ -293,14 +292,6 @@
         }
         .btn-shutter:active { box-shadow: 0 4px 0 #e65100; }
 
-        /* カメラ切り替えボタン */
-        .btn-toggle {
-            background-color: #009688;
-            color: white;
-            box-shadow: 0 8px 0 #00695c;
-        }
-        .btn-toggle:active { box-shadow: 0 4px 0 #00695c; }
-
         .btn-cancel {
             background-color: #757575;
             color: white;
@@ -393,7 +384,7 @@
             <div class="placeholder-subtext">（クリックや ファイルをドロップしてもOK）</div>
         </div>
         
-        <!-- PC・スマホのインカメラプレビュー用 -->
+        <!-- PC・スマホのカメラプレビュー用 -->
         <video id="camera-video" autoplay playsinline></video>
         
         <!-- クイズとして表示する画像 -->
@@ -421,14 +412,10 @@
             </label>
         </div>
 
-        <!-- インカメラ撮影中のコントロールボタン -->
+        <!-- カメラ撮影中のコントロールボタン -->
         <div class="camera-buttons" id="camera-buttons">
             <button class="btn btn-shutter" id="btn-shutter">
                 📸 パシャ！
-            </button>
-            <!-- iOS専用切り替えボタン (JSで制御) -->
-            <button class="btn btn-toggle" id="btn-toggle-camera" style="display: none;">
-                🔄 きりかえ
             </button>
             <button class="btn btn-cancel" id="btn-cancel-camera">
                 やめる
@@ -469,7 +456,6 @@
     const initialButtons = document.getElementById('initial-buttons');
     const cameraButtons = document.getElementById('camera-buttons');
     const btnShutter = document.getElementById('btn-shutter');
-    const btnToggleCamera = document.getElementById('btn-toggle-camera');
     const btnCancelCamera = document.getElementById('btn-cancel-camera');
     const hiddenQuizTrigger = document.getElementById('hidden-quiz-trigger');
     const hitMaru = document.getElementById('hit-maru');
@@ -619,11 +605,11 @@
         initialButtons.style.display = 'none';
         cameraButtons.style.display = 'flex';
 
-        // iOS端末の場合のみ、カメラ切り替えボタンを表示
+        // iOS端末の場合、初期起動は背面カメラをデフォルトにする
         if (isIOS()) {
-            btnToggleCamera.style.display = 'inline-flex';
+            currentFacingMode = 'environment';
         } else {
-            btnToggleCamera.style.display = 'none';
+            currentFacingMode = 'user'; // PCやAndroidなどは標準インカメラ
         }
 
         try {
@@ -639,7 +625,7 @@
             localStream = await navigator.mediaDevices.getUserMedia(constraints);
             cameraVideo.srcObject = localStream;
 
-            // プレビューの左右ミラー反転設定（インカメラの時だけ反転させる）
+            // プレビューの左右ミラー反転設定（インカメラ 'user' の時だけ反転させる）
             if (currentFacingMode === 'user') {
                 cameraVideo.style.transform = 'scaleX(-1)';
             } else {
@@ -661,7 +647,7 @@
         cameraVideo.style.display = 'none';
     }
 
-    // シャッターを切って写真画像を取得する
+    // シャッターを切して写真画像を取得する
     function takePhoto() {
         if (!localStream) return;
 
@@ -691,13 +677,6 @@
 
     btnStartCamera.addEventListener('click', startCamera);
     btnShutter.addEventListener('click', takePhoto);
-
-    // カメラの切り替え（トグル動作）
-    btnToggleCamera.addEventListener('click', async () => {
-        currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
-        stopCamera();
-        await startCamera();
-    });
 
     btnCancelCamera.addEventListener('click', () => {
         stopCamera();
