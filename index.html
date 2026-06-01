@@ -101,6 +101,7 @@
             object-fit: cover;
             border-radius: 24px;
             border: 6px solid #ff9800;
+            transform: scaleX(-1); /* 初期値（インカメラ）は鏡にする */
         }
 
         /* 取り込まれた画像 (アスペクト比を維持して最大表示) */
@@ -284,13 +285,21 @@
         }
         .btn-gallery:active { box-shadow: 0 4px 0 #01579b; }
 
-        /* カメラ撮影中用のボタン */
+        /* カメラ撮影中用のボタン（オレンジ色に変更） */
         .btn-shutter {
-            background-color: #e91e63;
+            background-color: #ff9800;
             color: white;
-            box-shadow: 0 8px 0 #ad1457;
+            box-shadow: 0 8px 0 #e65100;
         }
-        .btn-shutter:active { box-shadow: 0 4px 0 #ad1457; }
+        .btn-shutter:active { box-shadow: 0 4px 0 #e65100; }
+
+        /* カメラ切り替えボタン */
+        .btn-toggle {
+            background-color: #009688;
+            color: white;
+            box-shadow: 0 8px 0 #00695c;
+        }
+        .btn-toggle:active { box-shadow: 0 4px 0 #00695c; }
 
         .btn-cancel {
             background-color: #757575;
@@ -301,14 +310,14 @@
 
         .initial-buttons, .camera-buttons {
             display: flex;
-            gap: 40px;
+            gap: 25px;
         }
 
         .camera-buttons {
             display: none;
         }
 
-        /* --- 見た目では分からない隠しボタン（余計な装飾・枠線を完全に排除） --- */
+        /* --- 見た目では分からない隠しボタン --- */
         .hidden-quiz-trigger {
             display: none;
             width: 100%;
@@ -349,7 +358,6 @@
             z-index: 1;
             background: transparent; 
             border-radius: 20px;
-            /* ホバー時の背景変化等も排除 */
             outline: none;
             -webkit-tap-highlight-color: transparent;
         }
@@ -416,7 +424,11 @@
         <!-- インカメラ撮影中のコントロールボタン -->
         <div class="camera-buttons" id="camera-buttons">
             <button class="btn btn-shutter" id="btn-shutter">
-                📸 パシャリ！
+                📸 パシャ！
+            </button>
+            <!-- iOS専用切り替えボタン (JSで制御) -->
+            <button class="btn btn-toggle" id="btn-toggle-camera" style="display: none;">
+                🔄 きりかえ
             </button>
             <button class="btn btn-cancel" id="btn-cancel-camera">
                 やめる
@@ -438,7 +450,7 @@
 <!-- 撮影時に一時利用するキャンバス -->
 <canvas id="capture-canvas"></canvas>
 
-<!-- バックアップ用のファイルカメラインプット（カメラ許可が出ないなどの場合用） -->
+<!-- バックアップ用のファイルカメラインプット -->
 <input type="file" accept="image/*" capture="camera" id="fallback-camera-input">
 
 <script>
@@ -457,6 +469,7 @@
     const initialButtons = document.getElementById('initial-buttons');
     const cameraButtons = document.getElementById('camera-buttons');
     const btnShutter = document.getElementById('btn-shutter');
+    const btnToggleCamera = document.getElementById('btn-toggle-camera');
     const btnCancelCamera = document.getElementById('btn-cancel-camera');
     const hiddenQuizTrigger = document.getElementById('hidden-quiz-trigger');
     const hitMaru = document.getElementById('hit-maru');
@@ -465,6 +478,13 @@
 
     let localStream = null;
     let audioCtx = null;
+    let currentFacingMode = 'user'; // デフォルトはインカメラ ('user')
+
+    // --- iOS端末 (iPhone/iPad/iPod) の判定 ---
+    function isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+               (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+    }
 
     // --- Web Audio API（効果音のコード生成） ---
     function initAudio() {
@@ -478,7 +498,6 @@
         initAudio();
         const now = audioCtx.currentTime;
         
-        // 1音目（ミ）
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
         osc1.type = 'sine';
@@ -490,7 +509,6 @@
         osc1.start(now);
         osc1.stop(now + 0.4);
 
-        // 2音目（ソ）少し遅れて鳴らす
         const osc2 = audioCtx.createOscillator();
         const gain2 = audioCtx.createGain();
         osc2.type = 'sine';
@@ -512,17 +530,15 @@
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         
-        osc.type = 'triangle'; // 間の抜けたマイルドな三角波
+        osc.type = 'triangle'; 
         
-        // 高音から低音へ下降
         osc.frequency.setValueAtTime(320, now);
         osc.frequency.linearRampToValueAtTime(110, now + duration);
         
-        // ビブラート（LFO）でフニャフニャ揺らす
         const lfo = audioCtx.createOscillator();
         const lfoGain = audioCtx.createGain();
-        lfo.frequency.setValueAtTime(9, now); // 9Hzでピッチを揺らす
-        lfoGain.gain.setValueAtTime(35, now); // 揺らす幅
+        lfo.frequency.setValueAtTime(9, now); 
+        lfoGain.gain.setValueAtTime(35, now); 
         
         lfo.connect(lfoGain);
         lfoGain.connect(osc.frequency);
@@ -545,23 +561,20 @@
     function createHappySparkles() {
         const colors = ['#FFD700', '#FF69B4', '#00FFFF', '#ADFF2F', '#FF4500', '#9370DB', '#32CD32'];
         const shapes = ['★', '🌸', '✨', '♦', '●', '🎵'];
-        const numSparkles = 25; // 飛び散る数
+        const numSparkles = 25; 
 
         for (let i = 0; i < numSparkles; i++) {
             const sparkle = document.createElement('div');
             sparkle.className = 'sparkle';
             
-            // ランダムな絵文字や記号
             sparkle.textContent = shapes[Math.floor(Math.random() * shapes.length)];
             sparkle.style.color = colors[Math.floor(Math.random() * colors.length)];
             
-            // 初期位置を中央に設定
             sparkle.style.left = '50%';
             sparkle.style.top = '50%';
             
-            // 飛び散る角度と距離をランダムに決定
             const angle = Math.random() * Math.PI * 2;
-            const distance = 100 + Math.random() * 200; // 飛び散る半径
+            const distance = 100 + Math.random() * 200; 
             const tx = Math.cos(angle) * distance + 'px';
             const ty = Math.sin(angle) * distance + 'px';
             const rot = (Math.random() * 360 - 180) + 'deg';
@@ -570,13 +583,11 @@
             sparkle.style.setProperty('--ty', ty);
             sparkle.style.setProperty('--rot', rot);
             
-            // アニメーションの時間とディレイ
             const animDuration = 0.6 + Math.random() * 0.4;
             sparkle.style.animation = `sparkle-burst ${animDuration}s forwards cubic-bezier(0.1, 0.8, 0.3, 1)`;
             
             imageArea.appendChild(sparkle);
             
-            // アニメーション終了後に要素を削除
             setTimeout(() => {
                 sparkle.remove();
             }, animDuration * 1000);
@@ -586,11 +597,9 @@
     // --- 残念エフェクト（暗い背景）を写真のサイズ・位置にぴったり追従させる関数 ---
     function positionBatsuOverlay() {
         if (imageArea.classList.contains('has-image') && previewImage.style.display !== 'none') {
-            // 表示されている画像自体のサイズと、親枠（imageArea）基準の相対位置を取得
             const rect = previewImage.getBoundingClientRect();
             const parentRect = imageArea.getBoundingClientRect();
             
-            // 残念エフェクトの枠を画像にぴったり重ねる
             batsuOverlay.style.width = rect.width + 'px';
             batsuOverlay.style.height = rect.height + 'px';
             batsuOverlay.style.top = (rect.top - parentRect.top) + 'px';
@@ -598,7 +607,6 @@
         }
     }
 
-    // 画像が完全に読み込まれたタイミング、およびウィンドウのリサイズ時に位置調整を行う
     previewImage.addEventListener('load', positionBatsuOverlay);
     window.addEventListener('resize', positionBatsuOverlay);
 
@@ -611,10 +619,17 @@
         initialButtons.style.display = 'none';
         cameraButtons.style.display = 'flex';
 
+        // iOS端末の場合のみ、カメラ切り替えボタンを表示
+        if (isIOS()) {
+            btnToggleCamera.style.display = 'inline-flex';
+        } else {
+            btnToggleCamera.style.display = 'none';
+        }
+
         try {
             const constraints = {
                 video: {
-                    facingMode: 'user',
+                    facingMode: currentFacingMode,
                     width: { ideal: 1280 },
                     height: { ideal: 720 }
                 },
@@ -623,6 +638,13 @@
             
             localStream = await navigator.mediaDevices.getUserMedia(constraints);
             cameraVideo.srcObject = localStream;
+
+            // プレビューの左右ミラー反転設定（インカメラの時だけ反転させる）
+            if (currentFacingMode === 'user') {
+                cameraVideo.style.transform = 'scaleX(-1)';
+            } else {
+                cameraVideo.style.transform = 'scaleX(1)';
+            }
         } catch (err) {
             console.warn("ブラウザから直接カメラを起動できませんでした。通常のカメラ起動に切り替えます。", err);
             stopCamera();
@@ -648,9 +670,11 @@
         
         const ctx = captureCanvas.getContext('2d');
         
-        // 左右を反転
-        ctx.translate(captureCanvas.width, 0);
-        ctx.scale(-1, 1);
+        // インカメラ(user)の時は自撮り用に左右反転、背面(environment)の時はそのままキャプチャする
+        if (currentFacingMode === 'user') {
+            ctx.translate(captureCanvas.width, 0);
+            ctx.scale(-1, 1);
+        }
         
         ctx.drawImage(cameraVideo, 0, 0, captureCanvas.width, captureCanvas.height);
         
@@ -667,6 +691,14 @@
 
     btnStartCamera.addEventListener('click', startCamera);
     btnShutter.addEventListener('click', takePhoto);
+
+    // カメラの切り替え（トグル動作）
+    btnToggleCamera.addEventListener('click', async () => {
+        currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+        stopCamera();
+        await startCamera();
+    });
+
     btnCancelCamera.addEventListener('click', () => {
         stopCamera();
         cameraButtons.style.display = 'none';
@@ -748,7 +780,6 @@
     // 「❌か」側（右側）
     function handleBatsuSelect() {
         playBatsuSound();
-        // 表示直前にもう一度位置をぴったり合わせて、やれやれエフェクトを表示
         positionBatsuOverlay();
         batsuOverlay.classList.add('show');
         showNextPhase();
@@ -829,8 +860,8 @@
         imageArea.classList.remove('has-image');
         circleOverlay.classList.remove('show', 'fade-out-animation');
         batsuOverlay.classList.remove('show', 'fade-out');
+        currentFacingMode = 'user'; // カメラ設定を標準(インカメラ)に戻す
 
-        // 残念エフェクトの動的スタイルもリセット
         batsuOverlay.style.width = '';
         batsuOverlay.style.height = '';
         batsuOverlay.style.top = '';
